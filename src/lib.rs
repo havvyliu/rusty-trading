@@ -1,6 +1,8 @@
 use std::time::SystemTime;
 
+use serde::{Deserialize, Serialize};
 
+#[derive(Deserialize, Serialize)]
 pub struct Block {
     open: u32,
     high: u32,
@@ -15,6 +17,7 @@ impl Block {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct TimeSeries {
     time_range_unit: TimeRange,
     start: SystemTime,
@@ -29,6 +32,7 @@ impl TimeSeries {
 }
 
 
+#[derive(Deserialize, Serialize)]
 pub enum TimeRange {
     Second,
     Minute,

@@ -1,7 +1,8 @@
 use std::time::{Duration, SystemTime};
 use axum::{
-    routing::get,
-    Router,
+    http::StatusCode,
+    Json,
+    routing::get, Router
 };
 use rusty_trading::*;
 
@@ -18,12 +19,13 @@ async fn main() {
 }
 
 
-async fn get_daily() -> TimeSeries {
+async fn get_daily() -> (StatusCode, Json<TimeSeries>) {
     let b1 = Block::new(0, 10, 0, 10, 1);
     let b2 = Block::new(0, 10, 0, 10, 1);
     let b3 = Block::new(0, 10, 0, 10, 1);
     let b4 = Block::new(0, 10, 0, 10, 1);
     let start = SystemTime::now();
     let end = start.checked_add(Duration::new(60, 0));
-    TimeSeries::new(TimeRange::Daily, start, end.unwrap(), vec![b1, b2, b3, b4])
+    (StatusCode::OK, 
+        Json(TimeSeries::new(TimeRange::Daily, start, end.unwrap(), vec![b1, b2, b3, b4])))
 }
