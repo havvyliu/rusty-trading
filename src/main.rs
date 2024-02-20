@@ -23,6 +23,10 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
+//todo: Implement struct for stock.
+//todo: Implement api for buy stocks.
+//todo: Implement api for sell stocks.
+
 async fn set_point(Json(payload): Json<Point>) -> StatusCode {
     StatusCode::OK
 }
