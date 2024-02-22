@@ -16,6 +16,7 @@ async fn main() {
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
         .route("/daily", get(get_daily))
+        .route("/transaction", post(make_transaction))
         .route("/daily", post(get_daily));
 
     // run our app with hyper, listening globally on port 3000
@@ -23,9 +24,25 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-//todo: Implement struct for stock.
-//todo: Implement api for buy stocks.
-//todo: Implement api for sell stocks.
+//todo: Onboard DB
+//todo: Implement fn to flush transactions to time series data?
+//todo: Implement fn to flush changes caused by transactions to db?
+//todo: Implement a trading engine? Execute orders from buy and sell side
+//todo(ui): {
+// 1. UI, display a stock graph
+// 2. Dynamically update the graph (without user refresh)
+// 3.
+// }
+
+async fn make_transaction(Json(transaction): Json<Transaction>) -> StatusCode {
+    match transaction.operation() {
+        Operation::Buy => {
+            StatusCode::OK
+        }
+        Operation::Sell => {StatusCode::OK}
+        _ => StatusCode::BAD_GATEWAY
+    }
+}
 
 async fn set_point(Json(payload): Json<Point>) -> StatusCode {
     StatusCode::OK
