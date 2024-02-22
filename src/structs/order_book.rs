@@ -32,7 +32,7 @@ impl<'a> OrderBook<'a> {
                     / (amount + p.volume) as f32;
                 p.borrow_mut().volume += amount;
                 p.borrow_mut().high = f32::max(p.high, buy.price());
-                p.borrow_mut().low = f32::max(p.low, buy.price());
+                p.borrow_mut().low = f32::min(p.low, buy.price());
                 if amount != buy.amount() {
                     self.buy_order.push(Transaction::buy(
                         buy.symbol().to_string(),
@@ -51,4 +51,22 @@ impl<'a> OrderBook<'a> {
         }
         p
     }
+}
+
+#[test]
+pub fn test_order_execution() {
+    let mut buy_order = BinaryHeap::new();
+    let mut sell_order = BinaryHeap::new();
+    let buy = Transaction::buy("NVDA".to_string(), 500.0, 1000);
+    let sell = Transaction::sell("NVDA".to_string(), 500.0, 1000);
+    buy_order.push(buy);
+    sell_order.push(sell);
+    let prv_point = Point::new(400.0, 400.0, 400.0, 400.0, 1000);
+    let now = OrderBook::new(&mut buy_order, &mut sell_order).execute(prv_point);
+    assert_eq!(now.high, 500.0);
+    assert_eq!(now.close, 450.0);
+    assert_eq!(now.low, 400.0);
+    assert_eq!(now.volume, 2000);
+    assert!(buy_order.is_empty());
+    assert!(sell_order.is_empty());
 }

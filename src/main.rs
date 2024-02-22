@@ -1,18 +1,13 @@
 mod structs;
 
-use std::ops::Add;
-use axum::{
-    http::StatusCode,
-    Json,
-    routing::get, Router
-};
-use axum::routing::post;
-use chrono::{TimeDelta, Utc};
 use crate::structs::*;
+use axum::routing::post;
+use axum::{http::StatusCode, routing::get, Json, Router};
+use chrono::{TimeDelta, Utc};
+use std::ops::Add;
 
 #[tokio::main]
 async fn main() {
-
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
         .route("/daily", get(get_daily))
@@ -36,11 +31,9 @@ async fn main() {
 
 async fn make_transaction(Json(transaction): Json<Transaction>) -> StatusCode {
     match transaction.operation() {
-        Operation::Buy => {
-            StatusCode::OK
-        }
-        Operation::Sell => {StatusCode::OK}
-        _ => StatusCode::BAD_GATEWAY
+        Operation::Buy => StatusCode::OK,
+        Operation::Sell => StatusCode::OK,
+        _ => StatusCode::BAD_GATEWAY,
     }
 }
 
@@ -49,12 +42,19 @@ async fn set_point(Json(payload): Json<Point>) -> StatusCode {
 }
 
 async fn get_daily() -> (StatusCode, Json<TimeSeries>) {
-    let b1 = Point::new(0, 10, 0, 10, 1);
-    let b2 = Point::new(0, 10, 0, 10, 1);
-    let b3 = Point::new(0, 10, 0, 10, 1);
-    let b4 = Point::new(0, 10, 0, 10, 1);
+    let b1 = Point::new(0.0, 10.0, 0.0, 10.0, 1);
+    let b2 = Point::new(0.0, 10.0, 0.0, 10.0, 1);
+    let b3 = Point::new(0.0, 10.0, 0.0, 10.0, 1);
+    let b4 = Point::new(0.0, 10.0, 0.0, 10.0, 1);
     let start = Utc::now();
     let end = start.add(TimeDelta::minutes(1));
-    (StatusCode::OK, 
-        Json(TimeSeries::new(TimeRange::Day, start, end, vec![b1, b2, b3, b4])))
+    (
+        StatusCode::OK,
+        Json(TimeSeries::new(
+            TimeRange::Day,
+            start,
+            end,
+            vec![b1, b2, b3, b4],
+        )),
+    )
 }
