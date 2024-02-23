@@ -1,3 +1,5 @@
+use std::f32::NAN;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
@@ -20,25 +22,17 @@ impl Point {
         }
     }
 
+    pub fn blank() -> Self {
+        Self {
+            open: NAN,
+            high: 0.0,
+            low: NAN,
+            close: NAN,
+            volume: 0,
+        }
+    }
+
     pub fn borrow(&self) -> &Self {
         self
     }
-
-    // pub fn open(&self) -> u32 {
-    //     self.open
-    // }
-
-    // pub fn high(&self) -> u32 {
-    //     self.high
-    // }
-
-    // pub fn low(&self) -> u32 {
-    //     self.low
-    // }
-    // pub fn close(&self) -> u32 {
-    //     self.close
-    // }
-    // pub fn volume(&self) -> u32 {
-    //     self.volume
-    // }
 }

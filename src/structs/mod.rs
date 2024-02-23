@@ -1,13 +1,14 @@
+mod operation;
+mod order_book;
 mod point;
+mod stock;
 mod time_range;
 mod time_series;
-mod stock;
-mod operation;
 mod transaction;
-mod order_book;
 
-pub use point::Point;
-pub use time_series::TimeSeries;
-pub use time_range::TimeRange;
 pub use operation::Operation;
+pub use order_book::OrderBook;
+pub use point::Point;
+pub use time_range::TimeRange;
+pub use time_series::TimeSeries;
 pub use transaction::Transaction;
