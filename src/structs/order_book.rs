@@ -2,7 +2,7 @@ use std::{
     borrow::BorrowMut,
     cmp::min,
     collections::{BinaryHeap, LinkedList},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
 };
 
 use crate::{Point, Transaction};
@@ -11,19 +11,22 @@ use crate::{Point, Transaction};
 pub struct OrderBook {
     buy_order: Arc<Mutex<BinaryHeap<Transaction>>>,
     sell_order: Arc<Mutex<BinaryHeap<Transaction>>>,
-    points_queue: Arc<Mutex<LinkedList<Point>>>,
+    points_queue: Arc<RwLock<LinkedList<Point>>>,
+    cur_point: Arc<Mutex<Point>>,
 }
 
 impl OrderBook {
     pub fn new(
         buy_order: Arc<Mutex<BinaryHeap<Transaction>>>,
         sell_order: Arc<Mutex<BinaryHeap<Transaction>>>,
-        points_queue: Arc<Mutex<LinkedList<Point>>>,
+        points_queue: Arc<RwLock<LinkedList<Point>>>,
+        cur_point: Arc<Mutex<Point>>,
     ) -> Self {
         Self {
             buy_order,
             sell_order,
             points_queue,
+            cur_point,
         }
     }
 
@@ -35,14 +38,13 @@ impl OrderBook {
         self.sell_order.lock().unwrap().push(sell_order);
     }
 
-    pub fn execute(&self) -> Point {
-        let mut p = self
-            .points_queue
-            .lock()
-            .unwrap()
-            .pop_front()
-            .or(Some(Point::blank()))
-            .unwrap();
+    pub fn points(&self) -> LinkedList<Point> {
+        let read_lock = self.points_queue.read().unwrap();
+        read_lock.clone()
+    }
+
+    pub fn execute(&self) {
+        let mut p = self.cur_point.lock().unwrap();
         let mut buy_order = self.buy_order.lock().unwrap();
         let mut sell_order = self.sell_order.lock().unwrap();
 
@@ -76,7 +78,6 @@ impl OrderBook {
                 break;
             }
         }
-        p
     }
 }
 
@@ -89,18 +90,17 @@ pub fn test_order_execution() {
     buy_order.lock().unwrap().push(buy);
     sell_order.lock().unwrap().push(sell);
     let prv_point = Point::new(400.0, 400.0, 400.0, 400.0, 1000);
-    let mut q = LinkedList::new();
-    q.push_front(prv_point);
-    let now = OrderBook::new(
+    OrderBook::new(
         buy_order.clone(),
         sell_order.clone(),
-        Arc::new(Mutex::new(q)),
+        Arc::new(RwLock::new(LinkedList::new())),
+        Arc::new(Mutex::new(prv_point)),
     )
     .execute();
-    assert_eq!(now.high, 500.0);
-    assert_eq!(now.close, 450.0);
-    assert_eq!(now.low, 400.0);
-    assert_eq!(now.volume, 2000);
+    assert_eq!(prv_point.high, 500.0);
+    assert_eq!(prv_point.close, 450.0);
+    assert_eq!(prv_point.low, 400.0);
+    assert_eq!(prv_point.volume, 2000);
     assert!(buy_order.lock().unwrap().is_empty());
     assert!(sell_order.lock().unwrap().is_empty());
 }
@@ -113,13 +113,12 @@ pub fn test_order_not_executed() {
     let sell = Transaction::sell("NVDA".to_string(), 1000.0, 1000);
     buy_order.lock().unwrap().push(buy);
     sell_order.lock().unwrap().push(sell);
-    let prv_point = Point::new(400.0, 400.0, 400.0, 400.0, 1000);
-    let mut q = LinkedList::new();
-    q.push_front(prv_point);
-    let now = OrderBook::new(
+    let now = Point::new(400.0, 400.0, 400.0, 400.0, 1000);
+    OrderBook::new(
         buy_order.clone(),
         sell_order.clone(),
-        Arc::new(Mutex::new(q)),
+        Arc::new(RwLock::new(LinkedList::new())),
+        Arc::new(Mutex::new(now)),
     )
     .execute();
     assert_eq!(now.volume, 1000);

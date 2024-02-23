@@ -7,15 +7,16 @@ use axum::{http::StatusCode, routing::get, Json, Router};
 use chrono::{TimeDelta, Utc};
 use std::collections::{BinaryHeap, LinkedList};
 use std::ops::Add;
-use std::sync::{Arc, Mutex};
-use tokio::main;
+use std::sync::{Arc, Mutex, RwLock};
+use tokio::{main, select};
 
 #[main]
 async fn main() {
     let buy_order = Arc::new(Mutex::new(BinaryHeap::new()));
     let sell_order = Arc::new(Mutex::new(BinaryHeap::new()));
-    let points_queue = Arc::new(Mutex::new(LinkedList::new()));
-    let order_book = OrderBook::new(buy_order, sell_order, points_queue);
+    let points_queue = Arc::new(RwLock::new(LinkedList::new()));
+    let start_point = Arc::new(Mutex::new(Point::blank()));
+    let order_book = OrderBook::new(buy_order, sell_order, points_queue, start_point);
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
         .route("/daily", get(get_daily))
@@ -25,7 +26,9 @@ async fn main() {
 
     // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    select! {
+        () = axum::serve(listener, app) => {},
+    }
 }
 
 //todo: Onboard DB
@@ -56,20 +59,18 @@ async fn make_transaction(
     }
 }
 
-async fn get_daily() -> (StatusCode, Json<TimeSeries>) {
-    let b1 = Point::new(0.0, 10.0, 0.0, 10.0, 1);
-    let b2 = Point::new(0.0, 10.0, 0.0, 10.0, 1);
-    let b3 = Point::new(0.0, 10.0, 0.0, 10.0, 1);
-    let b4 = Point::new(0.0, 10.0, 0.0, 10.0, 1);
+async fn get_daily(State(order_book): State<OrderBook>) -> (StatusCode, Json<TimeSeries>) {
     let start = Utc::now();
     let end = start.add(TimeDelta::minutes(1));
+    let points = order_book.points();
+    let cur_point = order_book.cur
     (
         StatusCode::OK,
         Json(TimeSeries::new(
             TimeRange::Day,
             start,
             end,
-            vec![b1, b2, b3, b4],
+            points.into_iter().collect(),
         )),
     )
 }
