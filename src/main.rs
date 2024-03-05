@@ -26,9 +26,7 @@ async fn main() {
 
     // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    select! {
-        () = axum::serve(listener, app) => {},
-    }
+    axum::serve(listener, app).await.unwrap();
 }
 
 //todo: Onboard DB
@@ -63,7 +61,7 @@ async fn get_daily(State(order_book): State<OrderBook>) -> (StatusCode, Json<Tim
     let start = Utc::now();
     let end = start.add(TimeDelta::minutes(1));
     let points = order_book.points();
-    let cur_point = order_book.cur
+    let cur_point = order_book.cur_points();
     (
         StatusCode::OK,
         Json(TimeSeries::new(

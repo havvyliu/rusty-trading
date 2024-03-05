@@ -43,6 +43,10 @@ impl OrderBook {
         read_lock.clone()
     }
 
+    pub fn cur_points(&self) -> Arc<Mutex<Point>> {
+        Arc::clone(&self.cur_point)
+    }
+
     pub fn execute(&self) {
         let mut p = self.cur_point.lock().unwrap();
         let mut buy_order = self.buy_order.lock().unwrap();
