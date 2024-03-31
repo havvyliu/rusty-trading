@@ -11,3 +11,4 @@ mio = "0.8.11"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 chrono = { version = "0.4.34", features = ["serde"] }
+tokio-cron-scheduler = "*"
