@@ -2,7 +2,7 @@ use std::f32::NAN;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Point {
     pub open: f32,
     pub high: f32,

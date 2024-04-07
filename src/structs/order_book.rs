@@ -1,5 +1,5 @@
 use std::{
-    borrow::BorrowMut,
+    borrow::{Borrow, BorrowMut},
     cmp::min,
     collections::{BinaryHeap, LinkedList},
     sync::{Arc, Mutex, RwLock},
@@ -43,7 +43,7 @@ impl OrderBook {
         read_lock.clone()
     }
 
-    pub fn cur_points(&self) -> Arc<Mutex<Point>> {
+    pub fn cur_point(&self) -> Arc<Mutex<Point>> {
         Arc::clone(&self.cur_point)
     }
 
@@ -94,17 +94,18 @@ pub fn test_order_execution() {
     buy_order.lock().unwrap().push(buy);
     sell_order.lock().unwrap().push(sell);
     let prv_point = Point::new(400.0, 400.0, 400.0, 400.0, 1000);
+    let arc_prv_point = Arc::new(Mutex::new(prv_point));
     OrderBook::new(
         buy_order.clone(),
         sell_order.clone(),
         Arc::new(RwLock::new(LinkedList::new())),
-        Arc::new(Mutex::new(prv_point)),
+        Arc::clone(&arc_prv_point),
     )
     .execute();
-    assert_eq!(prv_point.high, 500.0);
-    assert_eq!(prv_point.close, 450.0);
-    assert_eq!(prv_point.low, 400.0);
-    assert_eq!(prv_point.volume, 2000);
+    assert_eq!(arc_prv_point.lock().unwrap().high, 500.0);
+    assert_eq!(arc_prv_point.lock().unwrap().close, 450.0);
+    assert_eq!(arc_prv_point.lock().unwrap().low, 400.0);
+    assert_eq!(arc_prv_point.lock().unwrap().volume, 2000);
     assert!(buy_order.lock().unwrap().is_empty());
     assert!(sell_order.lock().unwrap().is_empty());
 }
@@ -117,15 +118,15 @@ pub fn test_order_not_executed() {
     let sell = Transaction::sell("NVDA".to_string(), 1000.0, 1000);
     buy_order.lock().unwrap().push(buy);
     sell_order.lock().unwrap().push(sell);
-    let now = Point::new(400.0, 400.0, 400.0, 400.0, 1000);
+    let now = Arc::new(Mutex::new(Point::new(400.0, 400.0, 400.0, 400.0, 1000)));
     OrderBook::new(
         buy_order.clone(),
         sell_order.clone(),
         Arc::new(RwLock::new(LinkedList::new())),
-        Arc::new(Mutex::new(now)),
+        now.clone(),
     )
     .execute();
-    assert_eq!(now.volume, 1000);
+    assert_eq!(now.lock().unwrap().volume, 1000);
     assert!(buy_order.lock().unwrap().len() == 1);
     assert!(sell_order.lock().unwrap().len() == 1);
 }
