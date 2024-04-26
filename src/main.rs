@@ -23,7 +23,7 @@ async fn main() {
     // add scheduler
     let scheduler = JobScheduler::new().await.unwrap();
 
-    let job = Job::new_async("1/5 * * * * *", move |_uuid, _l| {
+    let job = Job::new_async("1/60 * * * * *", move |_uuid, _l| {
         let points_queue = points_queue.clone();
         let cur_point = cur_point.clone();
         Box::pin(async move {
