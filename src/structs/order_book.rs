@@ -51,6 +51,7 @@ impl OrderBook {
         let mut p = self.cur_point.lock().unwrap();
         let mut buy_order = self.buy_order.lock().unwrap();
         let mut sell_order = self.sell_order.lock().unwrap();
+        let mut cur_pt = self.cur_point().lock().unwrap();
 
         while !buy_order.is_empty() && !sell_order.is_empty() {
             let sell = sell_order.peek().unwrap();
