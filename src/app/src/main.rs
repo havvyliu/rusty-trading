@@ -7,7 +7,8 @@ use std::ops::Add;
 use std::sync::{Arc, Mutex, RwLock};
 use tokio::main;
 use tokio_cron_scheduler::{Job, JobScheduler};
-use rusty_trading::structs::*;
+use rusty_trading_lib::structs::*;
+
 
 #[main]
 async fn main() {
