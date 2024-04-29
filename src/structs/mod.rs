@@ -12,3 +12,4 @@ pub use point::Point;
 pub use time_range::TimeRange;
 pub use time_series::TimeSeries;
 pub use transaction::Transaction;
+pub use stock::Stock;
