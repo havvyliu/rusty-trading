@@ -1,6 +1,3 @@
-mod structs;
-
-use crate::structs::*;
 use axum::extract::State;
 use axum::routing::post;
 use axum::{http::StatusCode, routing::get, Json, Router};
@@ -10,6 +7,7 @@ use std::ops::Add;
 use std::sync::{Arc, Mutex, RwLock};
 use tokio::main;
 use tokio_cron_scheduler::{Job, JobScheduler};
+use rusty_trading::structs::*;
 
 #[main]
 async fn main() {
@@ -53,7 +51,6 @@ async fn main() {
 //todo(ui): {
 // 1. UI, display a stock graph
 // 2. Dynamically update the graph (without user refresh)
-// 3.
 // }
 
 async fn make_transaction(
