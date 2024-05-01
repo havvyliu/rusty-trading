@@ -1,3 +1,4 @@
 /target
 /.idea
 /src/app/target
+.DS_Store

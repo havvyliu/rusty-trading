@@ -24,10 +24,10 @@ impl Point {
 
     pub fn blank() -> Self {
         Self {
-            open: NAN,
+            open: 0.0,
             high: 0.0,
-            low: NAN,
-            close: NAN,
+            low: 0.0,
+            close: 0.0,
             volume: 0,
         }
     }

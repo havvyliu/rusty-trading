@@ -66,6 +66,7 @@ impl OrderBook {
                 p.borrow_mut().volume += amount;
                 p.borrow_mut().high = f32::max(p.high, buy.price());
                 p.borrow_mut().low = f32::min(p.low, buy.price());
+                println!("Executed {:?} of stocks", amount);
                 if amount != buy.amount() {
                     buy_order.push(Transaction::buy(
                         buy.symbol().to_string(),

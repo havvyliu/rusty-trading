@@ -2,6 +2,8 @@ use axum::extract::State;
 use axum::routing::post;
 use axum::{http::StatusCode, routing::get, Json, Router};
 use chrono::{TimeDelta, Utc};
+use rand::Rng;
+use tower_http::cors::CorsLayer;
 use std::collections::{BinaryHeap, LinkedList};
 use std::ops::Add;
 use std::sync::{Arc, Mutex, RwLock};
@@ -39,6 +41,8 @@ async fn main() {
         .route("/", get(|| async { "Hello, World!" }))
         .route("/daily", get(get_daily))
         .route("/transaction", post(make_transaction))
+        .route("/simulate", post(simulate))
+        .layer(CorsLayer::permissive())
         .with_state(order_book);
     // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
@@ -72,10 +76,31 @@ async fn make_transaction(
     }
 }
 
+async fn simulate(
+    State(order_book): State<OrderBook>,
+    symbol: String,
+) -> StatusCode {
+    println!("Start simulating..");
+    for i in 1..101 {
+        let price = rand::thread_rng().gen_range(50..=100) as f32;
+        let amount = rand::thread_rng().gen_range(100..=1000);
+        if i % 2 == 0 {
+            let buy_order = Transaction::buy(symbol.clone(), price, amount);
+            order_book.add_buy_order(buy_order);
+        } else {
+            let sell_order = Transaction::buy(symbol.clone(), price, amount);
+            order_book.add_sell_order(sell_order);
+        }
+    };
+    order_book.execute();
+    StatusCode::OK
+}
+
 async fn get_daily(State(order_book): State<OrderBook>) -> (StatusCode, Json<TimeSeries>) {
     let start = Utc::now();
     let end = start.add(TimeDelta::minutes(1));
     let points = order_book.points();
+    println!("get_daily called..");
     (
         StatusCode::OK,
         Json(TimeSeries::new(
