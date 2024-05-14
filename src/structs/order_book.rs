@@ -50,10 +50,13 @@ impl OrderBook {
     }
 
     pub fn execute(&self) {
+        println!("Start executing...");
         let mut p = self.cur_point.lock().unwrap();
         let mut buy_order = self.buy_order.lock().unwrap();
         let mut sell_order = self.sell_order.lock().unwrap();
 
+        println!("Buy order size {:?}", buy_order.len());
+        println!("Sell order size {:?}", sell_order.len());
         while !buy_order.is_empty() && !sell_order.is_empty() {
             let sell = sell_order.peek().unwrap();
             let buy = buy_order.peek().unwrap();

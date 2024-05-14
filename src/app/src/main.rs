@@ -51,9 +51,6 @@ async fn schedule_cron_job(points_queue: Arc<RwLock<LinkedList<Point>>>, cur_poi
     let job = Job::new_async("1/60 * * * * *", move |_uuid, _l| {
         let points_queue = points_queue.clone();
         let cur_point = cur_point.clone();
-        // Box::pin(async move {
-        //     flush(points_queue, cur_point)
-        // })
         Box::pin(
             flush(points_queue, cur_point)
         )
@@ -102,7 +99,7 @@ async fn simulate(
         let buy_order = Transaction::buy(symbol.clone(), price, amount);
         order_book.add_buy_order(buy_order);
         //add sell orders.
-        let sell_order = Transaction::buy(symbol.clone(), price, amount);
+        let sell_order = Transaction::sell(symbol.clone(), price, amount);
         order_book.add_sell_order(sell_order);
     };
     order_book.execute();
