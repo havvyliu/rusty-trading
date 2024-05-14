@@ -21,25 +21,12 @@ async fn main() {
     let order_book = OrderBook::new(buy_order, sell_order, points_queue.clone(), start_point);
     let cur_point = order_book.cur_point();
 
-    // add scheduler
-    let scheduler = JobScheduler::new().await.unwrap();
-
-    let job = Job::new_async("1/60 * * * * *", move |_uuid, _l| {
-        let points_queue = points_queue.clone();
-        let cur_point = cur_point.clone();
-        Box::pin(async move {
-            let cur_pt: Point = cur_point.lock().unwrap().to_owned();
-            println!("writing point {:?} to queue", cur_pt);
-            points_queue.write().unwrap().push_back(cur_pt);
-        })
-    });
-    let _ = scheduler.add(job.unwrap()).await;
-    // spawn another thread to process background tasks
-    tokio::spawn(async move { scheduler.start().await });
+    schedule_cron_job(points_queue, cur_point).await;
 
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
         .route("/daily", get(get_daily))
+        .route("/sample_daily", get(get_sample_daily))
         .route("/transaction", post(make_transaction))
         .route("/simulate", post(simulate))
         .layer(CorsLayer::permissive())
@@ -47,6 +34,33 @@ async fn main() {
     // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn flush(points_queue: Arc<RwLock<LinkedList<Point>>>, cur_point: Arc<Mutex<Point>>) {
+    let cur_pt: Point = cur_point.lock().unwrap().to_owned();
+    let mut cur_pt_lock = cur_point.lock().unwrap();
+    *cur_pt_lock = Point::new(cur_pt.clone().close, 0.0, 0.0, 0.0, 0);
+    println!("writing point {:?} to queue", cur_pt);
+    points_queue.write().unwrap().push_back(cur_pt);
+}
+
+async fn schedule_cron_job(points_queue: Arc<RwLock<LinkedList<Point>>>, cur_point: Arc<Mutex<Point>>) {
+    // add scheduler
+    let scheduler = JobScheduler::new().await.unwrap();
+
+    let job = Job::new_async("1/60 * * * * *", move |_uuid, _l| {
+        let points_queue = points_queue.clone();
+        let cur_point = cur_point.clone();
+        // Box::pin(async move {
+        //     flush(points_queue, cur_point)
+        // })
+        Box::pin(
+            flush(points_queue, cur_point)
+        )
+    });
+    let _ = scheduler.add(job.unwrap()).await;
+    // spawn another thread to process background tasks
+    tokio::spawn(async move { scheduler.start().await });
 }
 
 //todo: Onboard DB
@@ -81,19 +95,38 @@ async fn simulate(
     symbol: String,
 ) -> StatusCode {
     println!("Start simulating..");
-    for i in 1..101 {
+    for i in 1..10 {
         let price = rand::thread_rng().gen_range(50..=100) as f32;
-        let amount = rand::thread_rng().gen_range(100..=1000);
-        if i % 2 == 0 {
-            let buy_order = Transaction::buy(symbol.clone(), price, amount);
-            order_book.add_buy_order(buy_order);
-        } else {
-            let sell_order = Transaction::buy(symbol.clone(), price, amount);
-            order_book.add_sell_order(sell_order);
-        }
+        let amount = rand::thread_rng().gen_range(100..=500);
+        //add buy orders.
+        let buy_order = Transaction::buy(symbol.clone(), price, amount);
+        order_book.add_buy_order(buy_order);
+        //add sell orders.
+        let sell_order = Transaction::buy(symbol.clone(), price, amount);
+        order_book.add_sell_order(sell_order);
     };
     order_book.execute();
     StatusCode::OK
+}
+
+async fn get_sample_daily() -> (StatusCode, Json<TimeSeries>) {
+    let start = Utc::now();
+    let end = start.add(TimeDelta::minutes(1));
+    let points = vec![
+        Point::new(300.0, 500.0, 200.0, 600.0, 1000),
+        Point::new(600.0, 700.0, 200.0, 520.0, 2000),
+        Point::new(300.0, 500.0, 200.0, 520.0, 2000),
+    ];
+    println!("get_sample_daily called..");
+    (
+        StatusCode::OK,
+        Json(TimeSeries::new(
+            TimeRange::Day,
+            start,
+            end,
+            points,
+        )),
+    )
 }
 
 async fn get_daily(State(order_book): State<OrderBook>) -> (StatusCode, Json<TimeSeries>) {
@@ -110,4 +143,28 @@ async fn get_daily(State(order_book): State<OrderBook>) -> (StatusCode, Json<Tim
             points.into_iter().collect(),
         )),
     )
+}
+
+
+#[tokio::test]
+async fn test_flush_working() {
+    let buy_order = Arc::new(Mutex::new(BinaryHeap::new()));
+    let sell_order = Arc::new(Mutex::new(BinaryHeap::new()));
+    let points_queue = Arc::new(RwLock::new(LinkedList::new()));
+    let start_point = Arc::new(Mutex::new(Point::blank()));
+    let order_book = OrderBook::new(buy_order, sell_order, points_queue.clone(), start_point);
+    let cur_point = order_book.cur_point();
+
+    for i in 0..5 {
+        let price = (i + 1) as f32 * 100.0;
+        let buy = Transaction::buy("NVDA".to_string(), price, 1000);
+        let sell = Transaction::sell("NVDA".to_string(), price, 1000);
+        order_book.add_buy_order(buy);
+        order_book.add_sell_order(sell);
+        order_book.execute();
+        assert_eq!(order_book.points().len(), i);
+        assert_eq!(order_book.cur_point().lock().unwrap().close, price);
+        flush(points_queue.clone(), cur_point.clone()).await;
+        assert_eq!(order_book.points().len(), i + 1);
+    }
 }
