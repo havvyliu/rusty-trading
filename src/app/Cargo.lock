@@ -937,6 +937,7 @@ dependencies = [
  "reqwest",
  "rusty-trading-lib",
  "serde",
+ "serde_json",
  "tokio",
  "tokio-cron-scheduler",
  "tower-http",
