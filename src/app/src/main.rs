@@ -3,13 +3,17 @@ use axum::routing::post;
 use axum::{http::StatusCode, routing::get, Json, Router};
 use chrono::{TimeDelta, Utc};
 use rand::Rng;
+use reqwest::Client;
 use tower_http::cors::CorsLayer;
 use std::collections::{BinaryHeap, LinkedList};
+use std::env;
 use std::ops::Add;
 use std::sync::{Arc, Mutex, RwLock};
 use tokio::main;
 use tokio_cron_scheduler::{Job, JobScheduler};
 use rusty_trading_lib::structs::*;
+
+mod external;
 
 
 #[main]
@@ -23,6 +27,8 @@ async fn main() {
 
     schedule_cron_job(points_queue, cur_point).await;
 
+    let client = reqwest::Client::new();
+
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
         .route("/daily", get(get_daily))
@@ -30,7 +36,10 @@ async fn main() {
         .route("/transaction", post(make_transaction))
         .route("/simulate", post(simulate))
         .layer(CorsLayer::permissive())
-        .with_state(order_book);
+        .with_state(order_book)
+        .route("/third_party", get(get_real_data))
+        .with_state(client);
+
     // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
@@ -39,7 +48,8 @@ async fn main() {
 async fn flush(points_queue: Arc<RwLock<LinkedList<Point>>>, cur_point: Arc<Mutex<Point>>) {
     let cur_pt: Point = cur_point.lock().unwrap().to_owned();
     let mut cur_pt_lock = cur_point.lock().unwrap();
-    *cur_pt_lock = Point::new(cur_pt.clone().close, 0.0, 0.0, 0.0, 0);
+    let close_val = cur_pt.clone().close;
+    *cur_pt_lock = Point::new(close_val, close_val, close_val, close_val, 0);
     println!("writing point {:?} to queue", cur_pt);
     points_queue.write().unwrap().push_back(cur_pt);
 }
@@ -104,6 +114,25 @@ async fn simulate(
     };
     order_book.execute();
     StatusCode::OK
+}
+
+
+async fn get_real_data(State(client): State<Client>) -> (StatusCode, Json<TimeSeries>) {
+    let api_key = match env::var("API_KEY") {
+        Ok(api_key) => api_key,
+        Err(e) => {
+            return (StatusCode::BAD_REQUEST, Json(TimeSeries::default()));
+        },
+    };
+    let url = format!("https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=NVDA&interval=5min&apikey={}", api_key);
+    let reqwest_response = match client.get(url).send().await {
+            Ok(res) => res,
+            Err(err) => {
+                return (StatusCode::BAD_REQUEST, Json(TimeSeries::default()));
+            }
+        };
+    // TODO: parse the response to our model
+    (StatusCode::OK, Json(TimeSeries::default()))
 }
 
 async fn get_sample_daily() -> (StatusCode, Json<TimeSeries>) {
