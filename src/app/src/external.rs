@@ -3,8 +3,6 @@ use std::{collections::HashMap, fmt};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use rusty_trading_lib::structs::Point;
 use serde::{de::{MapAccess, Visitor}, Deserialize, Deserializer};
-use serde_json::{Map, Value};
-
 
 /*
 {
@@ -27,17 +25,24 @@ use serde_json::{Map, Value};
     ...
 */
 #[derive(Deserialize, Debug)]
-struct IntradayStock {
+pub struct IntradayStock {
     #[serde(alias = "Meta Data")]
     meta_data: MetaData,
     #[serde(
         alias = "Time Series (5min)",
     )]
-    time_series: TimePointMap
+    time_series: TimePointMap,
+}
+
+
+impl IntradayStock {
+    pub fn get_points_map(self: &Self) -> &HashMap<DateTime<Utc>, Point> {
+        &self.time_series.map
+    }
 }
 
 #[derive(Deserialize, Debug)]
-struct TimePointMap {
+pub struct TimePointMap {
     #[serde(
         flatten,
         deserialize_with = "deserialize_hash_map",
@@ -46,7 +51,7 @@ struct TimePointMap {
 }
 
 #[derive(Deserialize, Debug)]
-struct CandleStick {
+pub struct CandleStick {
     #[serde(alias = "1. open")]
     open: String,
     #[serde(alias = "2. high")]
@@ -60,7 +65,7 @@ struct CandleStick {
 }
 
 #[derive(Deserialize, Debug)]
-struct MetaData {
+pub struct MetaData {
     #[serde(alias = "1. Information")]
     information: String,
     #[serde(alias = "2. Symbol")]
@@ -76,7 +81,7 @@ struct MetaData {
     time_zone: String,
 }
 
-const FORMAT: &'static str = "%Y-%m-%d %H:%M:%S";
+pub const FORMAT: &'static str = "%Y-%m-%d %H:%M:%S";
 
 fn deserialize_hash_map<'de, D>(deserializer: D) -> Result<HashMap<DateTime<Utc>, Point>, D::Error>
 where

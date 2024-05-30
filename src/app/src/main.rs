@@ -1,7 +1,8 @@
 use axum::extract::State;
 use axum::routing::post;
 use axum::{http::StatusCode, routing::get, Json, Router};
-use chrono::{TimeDelta, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
+use external::IntradayStock;
 use rand::Rng;
 use reqwest::Client;
 use tower_http::cors::CorsLayer;
@@ -14,7 +15,6 @@ use tokio_cron_scheduler::{Job, JobScheduler};
 use rusty_trading_lib::structs::*;
 
 mod external;
-
 
 #[main]
 async fn main() {
@@ -121,6 +121,7 @@ async fn get_real_data(State(client): State<Client>) -> (StatusCode, Json<TimeSe
     let api_key = match env::var("API_KEY") {
         Ok(api_key) => api_key,
         Err(e) => {
+            println!("No API_KEY set in env...");
             return (StatusCode::BAD_REQUEST, Json(TimeSeries::default()));
         },
     };
@@ -132,7 +133,17 @@ async fn get_real_data(State(client): State<Client>) -> (StatusCode, Json<TimeSe
             }
         };
     // TODO: parse the response to our model
-    (StatusCode::OK, Json(TimeSeries::default()))
+    let body = reqwest_response.text().await.unwrap();
+    let intraday: IntradayStock = serde_json::from_str(&body).unwrap();
+    let map = intraday.get_points_map().to_owned();
+    let start = map.keys().min().unwrap().to_owned();
+    let end = map.keys().max().unwrap().to_owned();
+    let all_points: Vec<Point> = map.into_iter()
+        .map(|(_, val)| val)
+        .collect();
+    (StatusCode::OK, Json(
+        TimeSeries::new(TimeRange::Minute, start, end, all_points)
+    ))
 }
 
 async fn get_sample_daily() -> (StatusCode, Json<TimeSeries>) {
