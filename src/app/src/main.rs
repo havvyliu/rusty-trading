@@ -38,6 +38,7 @@ async fn main() {
         .layer(CorsLayer::permissive())
         .with_state(order_book)
         .route("/third_party", get(get_real_data))
+        .layer(CorsLayer::permissive())
         .with_state(client);
 
     // run our app with hyper, listening globally on port 3000
