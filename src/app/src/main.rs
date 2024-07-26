@@ -6,6 +6,7 @@ use external::IntradayStock;
 use rand::Rng;
 use reqwest::Client;
 use tower_http::cors::CorsLayer;
+use std::borrow::Borrow;
 use std::collections::{BinaryHeap, HashMap, LinkedList};
 use std::env;
 use std::ops::Add;
@@ -52,6 +53,7 @@ async fn flush(order_book_map: Arc<Mutex<HashMap<String, OrderBook>>>) {
         *cur_pt_lock = Point::new(close_val, close_val, close_val, close_val, 0);
         println!("writing point {:?} to queue", cur_pt);
         points_queue.push_back(cur_pt);
+        println!("queue size is {:?}", points_queue.len());
     }
     
 }
@@ -93,7 +95,7 @@ async fn make_transaction(
             let sell_order = Arc::new(Mutex::new(BinaryHeap::new()));
             let points_queue = Arc::new(RwLock::new(LinkedList::new()));
             let start_point = Arc::new(Mutex::new(Point::blank()));
-            let new_order_book = OrderBook::new(buy_order, sell_order, points_queue.clone(), start_point);
+            let new_order_book = OrderBook::new(buy_order, sell_order, points_queue, start_point);
             map.insert(symbol.to_string(), new_order_book.to_owned());
             &map.get(symbol).unwrap()
         }
@@ -221,24 +223,36 @@ async fn get_daily(Query(params): Query<HashMap<String, String>>, State(order_bo
 async fn test_flush_working() {
     let buy_order = Arc::new(Mutex::new(BinaryHeap::new()));
     let sell_order = Arc::new(Mutex::new(BinaryHeap::new()));
-    let points_queue = Arc::new(RwLock::new(LinkedList::new())); let start_point = Arc::new(Mutex::new(Point::blank()));
-    let order_book = OrderBook::new(buy_order, sell_order, points_queue.clone(), start_point);
+    let points_queue = Arc::new(RwLock::new(LinkedList::new())); 
+    let start_point = Arc::new(Mutex::new(Point::blank()));
+    let new_order_book = OrderBook::new(buy_order, sell_order, points_queue, start_point);
     let order_book_map = HashMap::from([
-        ("NVDA", order_book)
+        ("NVDA".to_string(), new_order_book)
     ]);
     let order_book_arc = Arc::new(Mutex::new(order_book_map));
-    let cur_point = order_book.cur_point();
 
     for i in 0..5 {
-        let price = (i + 1) as f32 * 100.0;
-        let buy = Transaction::buy("NVDA".to_string(), price, 1000);
-        let sell = Transaction::sell("NVDA".to_string(), price, 1000);
-        order_book.add_buy_order(buy);
-        order_book.add_sell_order(sell);
-        order_book.execute();
-        assert_eq!(order_book.points().len(), i);
-        assert_eq!(order_book.cur_point().lock().unwrap().close, price);
-        flush(order_book_arc).await;
-        assert_eq!(order_book.points().len(), i + 1);
+        {
+            let clone = order_book_arc.clone();
+            let map = clone.lock().unwrap();
+            let order_book = map.get("NVDA").unwrap();
+            let price = (i + 1) as f32 * 100.0;
+            let buy = Transaction::buy("NVDA".to_string(), price, 1000);
+            let sell = Transaction::sell("NVDA".to_string(), price, 1000);
+            order_book.add_buy_order(buy);
+            order_book.add_sell_order(sell);
+            order_book.execute();
+            assert_eq!(order_book.points().len(), i);
+            assert_eq!(order_book.cur_point().lock().unwrap().close, price);
+        }
+        //drop(map);
+        flush(order_book_arc.clone()).await;
+        println!("Here");
+        {
+            let clone = order_book_arc.clone();
+            let map = clone.lock().unwrap();
+            let order_book = map.get("NVDA").unwrap();
+            assert_eq!(order_book.points().len(), i + 1);
+        }
     }
 }

@@ -45,6 +45,11 @@ impl OrderBook {
         read_lock.clone()
     }
 
+    pub fn points_mut(&self) -> LinkedList<Point> {
+        let write_lock = self.points_queue.write().unwrap();
+        write_lock.clone()
+    }
+
     pub fn cur_point(&self) -> Arc<Mutex<Point>> {
         Arc::clone(&self.cur_point)
     }
