@@ -45,7 +45,8 @@ async fn main() {
 async fn flush(order_book_map: Arc<Mutex<HashMap<String, OrderBook>>>) {
     let map = order_book_map.lock().unwrap();
     for (_stock_name, order_book) in &*map {
-        let mut points_queue = order_book.points_mut();
+        let points_lock = order_book.points();
+        let mut points_queue = points_lock.write().unwrap();
         let cur_point = order_book.cur_point();
         let cur_pt: Point = cur_point.lock().unwrap().to_owned();
         let mut cur_pt_lock = cur_point.lock().unwrap();
@@ -127,7 +128,7 @@ async fn simulate(
             let sell_order = Arc::new(Mutex::new(BinaryHeap::new()));
             let points_queue = Arc::new(RwLock::new(LinkedList::new()));
             let start_point = Arc::new(Mutex::new(Point::blank()));
-            let new_order_book = OrderBook::new(buy_order, sell_order, points_queue.clone(), start_point);
+            let new_order_book = OrderBook::new(buy_order, sell_order, points_queue, start_point);
             map.insert(symbol.clone(), new_order_book.to_owned());
             &map.get(&symbol).unwrap()
         }
@@ -203,17 +204,28 @@ async fn get_daily(Query(params): Query<HashMap<String, String>>, State(order_bo
     let stock_name = params.get("stock").unwrap();
     println!("size is {:?}", order_book_map.lock().unwrap().len());
     let map = order_book_map.lock().unwrap();
-    let points = match map.get(stock_name) {
-        Some(order_book) => order_book.points(),
-        _ => LinkedList::new(),
+    let points_copy = match map.get(stock_name) {
+        Some(value) => {
+            let mut points_copy = vec![];
+            let write_lock = value.points();
+            let points = write_lock.write().unwrap();
+            for point in &*points {
+                points_copy.push(point.clone());
+            }
+            points_copy
+        },
+        _ => {
+            vec![]
+        }
     };
+
     (
         StatusCode::OK,
         Json(TimeSeries::new(
             TimeRange::Day,
             start,
             end,
-            points.into_iter().collect(),
+            points_copy,
         )),
     )
 }
@@ -242,7 +254,7 @@ async fn test_flush_working() {
             order_book.add_buy_order(buy);
             order_book.add_sell_order(sell);
             order_book.execute();
-            assert_eq!(order_book.points().len(), i);
+            assert_eq!(order_book.points().read().unwrap().len(), i);
             assert_eq!(order_book.cur_point().lock().unwrap().close, price);
         }
         //drop(map);
@@ -252,7 +264,7 @@ async fn test_flush_working() {
             let clone = order_book_arc.clone();
             let map = clone.lock().unwrap();
             let order_book = map.get("NVDA").unwrap();
-            assert_eq!(order_book.points().len(), i + 1);
+            assert_eq!(order_book.points().read().unwrap().len(), i + 1);
         }
     }
 }

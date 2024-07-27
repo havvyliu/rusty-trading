@@ -40,9 +40,8 @@ impl OrderBook {
         self.sell_order.lock().unwrap().push(sell_order);
     }
 
-    pub fn points(&self) -> LinkedList<Point> {
-        let read_lock = self.points_queue.read().unwrap();
-        read_lock.clone()
+    pub fn points(&self) -> Arc<RwLock<LinkedList<Point>>> {
+        self.points_queue.clone()
     }
 
     pub fn points_mut(&self) -> LinkedList<Point> {
