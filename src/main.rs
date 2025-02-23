@@ -6,20 +6,20 @@ use external::IntradayStock;
 use rand::Rng;
 use reqwest::Client;
 use tower_http::cors::CorsLayer;
-use std::borrow::Borrow;
 use std::collections::{BinaryHeap, HashMap, LinkedList};
 use std::env;
 use std::ops::Add;
 use std::sync::{Arc, Mutex, RwLock};
 use tokio::main;
 use tokio_cron_scheduler::{Job, JobScheduler};
-use rusty_trading_lib::structs::*;
+use rusty_trading_model::structs::*;
+use dashmap::DashMap;
 
 mod external;
 
 #[main]
 async fn main() {
-    let order_book_map: Arc<Mutex<HashMap<String, OrderBook>>> = Arc::new(Mutex::new(HashMap::new()));
+    let order_book_map: Arc<DashMap<String, OrderBook>> = Arc::new(DashMap::new());
 
     schedule_cron_job(order_book_map.clone()).await;
 
@@ -42,9 +42,10 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn flush(order_book_map: Arc<Mutex<HashMap<String, OrderBook>>>) {
-    let map = order_book_map.lock().unwrap();
-    for (_stock_name, order_book) in &*map {
+async fn flush(order_book_map: Arc<DashMap<String, OrderBook>>) {
+    let map = order_book_map.clone();
+    for refMulti in map.iter() {
+        let order_book = refMulti.value();
         let points_lock = order_book.points();
         let mut points_queue = points_lock.write().unwrap();
         let cur_point = order_book.cur_point();
@@ -56,10 +57,10 @@ async fn flush(order_book_map: Arc<Mutex<HashMap<String, OrderBook>>>) {
         points_queue.push_back(cur_pt);
         println!("queue size is {:?}", points_queue.len());
     }
-    
+
 }
 
-async fn schedule_cron_job(order_book_map: Arc<Mutex<HashMap<String, OrderBook>>>) {
+async fn schedule_cron_job(order_book_map: Arc<DashMap<String, OrderBook>>) {
     // add scheduler
     let scheduler = JobScheduler::new().await.unwrap();
 
@@ -84,12 +85,11 @@ async fn schedule_cron_job(order_book_map: Arc<Mutex<HashMap<String, OrderBook>>
 // }
 
 async fn make_transaction(
-    State(order_book_map_arc): State<Arc<Mutex<HashMap<String, OrderBook>>>>,
+    State(order_book_map): State<Arc<DashMap<String, OrderBook>>>,
     Json(transaction): Json<Transaction>,
 ) -> StatusCode {
     let symbol = transaction.symbol();
-    let mut map = order_book_map_arc.lock().unwrap();
-    let order_book = match map.get(symbol) {
+    let order_book = match order_book_map.get(symbol) {
         Some(value) => value,
         None => {
             let buy_order = Arc::new(Mutex::new(BinaryHeap::new()));
@@ -97,8 +97,8 @@ async fn make_transaction(
             let points_queue = Arc::new(RwLock::new(LinkedList::new()));
             let start_point = Arc::new(Mutex::new(Point::blank()));
             let new_order_book = OrderBook::new(buy_order, sell_order, points_queue, start_point);
-            map.insert(symbol.to_string(), new_order_book.to_owned());
-            &map.get(symbol).unwrap()
+            order_book_map.insert(symbol.to_string(), new_order_book.to_owned());
+            order_book_map.get(symbol).unwrap()
         }
     };
     match transaction.operation() {
@@ -116,12 +116,11 @@ async fn make_transaction(
 }
 
 async fn simulate(
-    State(order_book_arc): State<Arc<Mutex<HashMap<String, OrderBook>>>>,
+    State(order_book_arc): State<Arc<DashMap<String, OrderBook>>>,
     symbol: String,
 ) -> StatusCode {
     println!("Start simulating..");
-    let mut map = order_book_arc.lock().unwrap();
-    let order_book = match map.get(&symbol) {
+    let order_book = match order_book_arc.get(&symbol) {
         Some(value) => value,
         None => {
             let buy_order = Arc::new(Mutex::new(BinaryHeap::new()));
@@ -129,8 +128,8 @@ async fn simulate(
             let points_queue = Arc::new(RwLock::new(LinkedList::new()));
             let start_point = Arc::new(Mutex::new(Point::blank()));
             let new_order_book = OrderBook::new(buy_order, sell_order, points_queue, start_point);
-            map.insert(symbol.clone(), new_order_book.to_owned());
-            &map.get(&symbol).unwrap()
+            order_book_arc.insert(symbol.clone(), new_order_book.to_owned());
+            order_book_arc.get(&symbol).unwrap()
         }
     };
     for _i in 1..10 {
@@ -197,18 +196,17 @@ async fn get_sample_daily() -> (StatusCode, Json<TimeSeries>) {
     )
 }
 
-async fn get_daily(Query(params): Query<HashMap<String, String>>, State(order_book_map): State<Arc<Mutex<HashMap<String, OrderBook>>>>) -> (StatusCode, Json<TimeSeries>) {
+async fn get_daily(Query(params): Query<HashMap<String, String>>, State(order_book_map): State<Arc<DashMap<String, OrderBook>>>) -> (StatusCode, Json<TimeSeries>) {
     println!("get_daily called..");
     let start = Utc::now();
     let end = start.add(TimeDelta::minutes(1));
     let stock_name = params.get("stock").unwrap();
-    println!("size is {:?}", order_book_map.lock().unwrap().len());
-    let map = order_book_map.lock().unwrap();
-    let points_copy = match map.get(stock_name) {
+    println!("size is {:?}", order_book_map.len());
+    let points_copy = match order_book_map.get(stock_name) {
         Some(value) => {
             let mut points_copy = vec![];
             let write_lock = value.points();
-            let points = write_lock.write().unwrap();
+            let points = write_lock.read().unwrap();
             for point in &*points {
                 points_copy.push(point.clone());
             }
@@ -235,19 +233,17 @@ async fn get_daily(Query(params): Query<HashMap<String, String>>, State(order_bo
 async fn test_flush_working() {
     let buy_order = Arc::new(Mutex::new(BinaryHeap::new()));
     let sell_order = Arc::new(Mutex::new(BinaryHeap::new()));
-    let points_queue = Arc::new(RwLock::new(LinkedList::new())); 
+    let points_queue = Arc::new(RwLock::new(LinkedList::new()));
     let start_point = Arc::new(Mutex::new(Point::blank()));
     let new_order_book = OrderBook::new(buy_order, sell_order, points_queue, start_point);
-    let order_book_map = HashMap::from([
-        ("NVDA".to_string(), new_order_book)
-    ]);
-    let order_book_arc = Arc::new(Mutex::new(order_book_map));
+    let order_book_map = DashMap::new();
+    order_book_map.insert("NVDA".to_string(), new_order_book);
+    let order_book_arc = Arc::new(order_book_map);
 
     for i in 0..5 {
         {
             let clone = order_book_arc.clone();
-            let map = clone.lock().unwrap();
-            let order_book = map.get("NVDA").unwrap();
+            let order_book = clone.get("NVDA").unwrap();
             let price = (i + 1) as f32 * 100.0;
             let buy = Transaction::buy("NVDA".to_string(), price, 1000);
             let sell = Transaction::sell("NVDA".to_string(), price, 1000);
@@ -262,8 +258,7 @@ async fn test_flush_working() {
         println!("Here");
         {
             let clone = order_book_arc.clone();
-            let map = clone.lock().unwrap();
-            let order_book = map.get("NVDA").unwrap();
+            let order_book = clone.get("NVDA").unwrap();
             assert_eq!(order_book.points().read().unwrap().len(), i + 1);
         }
     }

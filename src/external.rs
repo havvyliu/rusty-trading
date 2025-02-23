@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use rusty_trading_lib::structs::Point;
+use rusty_trading_model::structs::Point;
 use serde::{de::{MapAccess, Visitor}, Deserialize, Deserializer};
 
 /*
