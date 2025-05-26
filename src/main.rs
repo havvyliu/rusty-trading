@@ -26,9 +26,7 @@ async fn main() {
     let client = reqwest::Client::new();
 
     let app = Router::new()
-        .route("/", get(|| async { "Hello, World!" }))
         .route("/daily", get(get_daily))
-        .route("/sample_daily", get(get_sample_daily))
         .route("/transaction", post(make_transaction))
         .route("/simulate", post(simulate))
         .layer(CorsLayer::permissive())
@@ -44,8 +42,8 @@ async fn main() {
 
 async fn flush(order_book_map: Arc<DashMap<String, OrderBook>>) {
     let map = order_book_map.clone();
-    for refMulti in map.iter() {
-        let order_book = refMulti.value();
+    for ref_multi in map.iter() {
+        let order_book = ref_multi.value();
         let points_lock = order_book.points();
         let mut points_queue = points_lock.write().unwrap();
         let cur_point = order_book.cur_point();
@@ -174,26 +172,6 @@ async fn get_real_data(State(client): State<Client>) -> (StatusCode, Json<TimeSe
     (StatusCode::OK, Json(
         TimeSeries::new(TimeRange::Minute, start, end, all_points)
     ))
-}
-
-async fn get_sample_daily() -> (StatusCode, Json<TimeSeries>) {
-    let start = Utc::now();
-    let end = start.add(TimeDelta::minutes(1));
-    let points = vec![
-        Point::new(300.0, 500.0, 200.0, 600.0, 1000),
-        Point::new(600.0, 700.0, 200.0, 520.0, 2000),
-        Point::new(300.0, 500.0, 200.0, 520.0, 2000),
-    ];
-    println!("get_sample_daily called..");
-    (
-        StatusCode::OK,
-        Json(TimeSeries::new(
-            TimeRange::Day,
-            start,
-            end,
-            points,
-        )),
-    )
 }
 
 async fn get_daily(Query(params): Query<HashMap<String, String>>, State(order_book_map): State<Arc<DashMap<String, OrderBook>>>) -> (StatusCode, Json<TimeSeries>) {
