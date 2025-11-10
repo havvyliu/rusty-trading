@@ -105,10 +105,10 @@ where
                 let dt = NaiveDateTime::parse_from_str(&key, FORMAT).map_err(serde::de::Error::custom)?;
                 let utc_dt = DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc);
                 let point = Point::new(
-                    candle_stick.open.parse::<f32>().unwrap(),
-                    candle_stick.high.parse::<f32>().unwrap(),
-                    candle_stick.low.parse::<f32>().unwrap(),
-                    candle_stick.close.parse::<f32>().unwrap(),
+                    candle_stick.open.parse::<f64>().unwrap(),
+                    candle_stick.high.parse::<f64>().unwrap(),
+                    candle_stick.low.parse::<f64>().unwrap(),
+                    candle_stick.close.parse::<f64>().unwrap(),
                     candle_stick.volume.parse::<u32>().unwrap());
                 result.insert(utc_dt, point);
             }

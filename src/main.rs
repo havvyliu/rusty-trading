@@ -16,6 +16,7 @@ use rusty_trading_model::structs::*;
 use dashmap::DashMap;
 
 mod external;
+mod simulation;
 
 #[main]
 async fn main() {
@@ -24,6 +25,7 @@ async fn main() {
     schedule_cron_job(order_book_map.clone()).await;
 
     let client = reqwest::Client::new();
+    let time_series: Arc<Mutex<TimeSeries>> = Arc::new(Mutex::new(TimeSeries::default()));
 
     let app = Router::new()
         .route("/daily", get(get_daily))
@@ -33,7 +35,10 @@ async fn main() {
         .with_state(order_book_map)
         .route("/third_party", get(get_real_data))
         .layer(CorsLayer::permissive())
-        .with_state(client);
+        .with_state(client)
+        .route("/simulate_v2", post(simulate_v2))
+        .layer(CorsLayer::permissive())
+        .with_state(time_series);
 
     // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
@@ -113,6 +118,19 @@ async fn make_transaction(
     }
 }
 
+async fn simulate_v2(
+    State(time_series): State<Arc<Mutex<TimeSeries>>>,
+    symbol: String,
+) -> StatusCode {
+    println!("Start simulating...");
+    let start_price = 100.0;
+    let next_price = simulation::simulation::henson(start_price);
+    let size = time_series.lock().unwrap().data().len();
+    time_series.lock().unwrap().data().insert(size, 
+        Point::new(start_price, next_price, next_price, next_price, 100));
+    StatusCode::OK
+}
+
 async fn simulate(
     State(order_book_arc): State<Arc<DashMap<String, OrderBook>>>,
     symbol: String,
@@ -131,7 +149,7 @@ async fn simulate(
         }
     };
     for _i in 1..10 {
-        let price = rand::thread_rng().gen_range(50..=100) as f32;
+        let price = rand::thread_rng().gen_range(50..=100) as f64;
         let amount = rand::thread_rng().gen_range(100..=500);
         //add buy orders.
         let buy_order = Transaction::buy(symbol.clone(), price, amount);
@@ -174,35 +192,31 @@ async fn get_real_data(State(client): State<Client>) -> (StatusCode, Json<TimeSe
     ))
 }
 
-async fn get_daily(Query(params): Query<HashMap<String, String>>, State(order_book_map): State<Arc<DashMap<String, OrderBook>>>) -> (StatusCode, Json<TimeSeries>) {
+async fn get_daily(
+    Query(params): Query<HashMap<String, String>>,
+    State(order_book_map): State<Arc<DashMap<String, OrderBook>>>)
+    -> (StatusCode, Json<TimeSeries>) {
     println!("get_daily called..");
-    let start = Utc::now();
-    let end = start.add(TimeDelta::minutes(1));
     let stock_name = params.get("stock").unwrap();
     println!("size is {:?}", order_book_map.len());
-    let points_copy = match order_book_map.get(stock_name) {
-        Some(value) => {
-            let mut points_copy = vec![];
-            let write_lock = value.points();
-            let points = write_lock.read().unwrap();
-            for point in &*points {
-                points_copy.push(point.clone());
-            }
-            points_copy
+    
+    let time_series = match order_book_map.get(stock_name) {
+        Some(order_book_ref) => {
+            order_book_ref.update_time_series();
+            
+            let time_series_arc = order_book_ref.time_series();
+            let time_series_guard = time_series_arc.read().unwrap();
+            (*time_series_guard).clone()
         },
-        _ => {
-            vec![]
+        None => {
+            // Return empty TimeSeries if stock not found
+            TimeSeries::default()
         }
     };
 
     (
         StatusCode::OK,
-        Json(TimeSeries::new(
-            TimeRange::Day,
-            start,
-            end,
-            points_copy,
-        )),
+        Json(time_series),
     )
 }
 
@@ -222,7 +236,7 @@ async fn test_flush_working() {
         {
             let clone = order_book_arc.clone();
             let order_book = clone.get("NVDA").unwrap();
-            let price = (i + 1) as f32 * 100.0;
+            let price = (i + 1) as f64 * 100.0;
             let buy = Transaction::buy("NVDA".to_string(), price, 1000);
             let sell = Transaction::sell("NVDA".to_string(), price, 1000);
             order_book.add_buy_order(buy);
