@@ -31,14 +31,12 @@ async fn main() {
         .route("/daily", get(get_daily))
         .route("/transaction", post(make_transaction))
         .route("/simulate", post(simulate))
+        .route("/simulate_v2", post(simulate_v2))
         .layer(CorsLayer::permissive())
         .with_state(order_book_map)
         .route("/third_party", get(get_real_data))
         .layer(CorsLayer::permissive())
-        .with_state(client)
-        .route("/simulate_v2", post(simulate_v2))
-        .layer(CorsLayer::permissive())
-        .with_state(time_series);
+        .with_state(client);
 
     // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
@@ -119,15 +117,21 @@ async fn make_transaction(
 }
 
 async fn simulate_v2(
-    State(time_series): State<Arc<Mutex<TimeSeries>>>,
+    State(order_book_arc): State<Arc<DashMap<String, OrderBook>>>,
     symbol: String,
 ) -> StatusCode {
+    let time_series = order_book_arc.get_mut(&symbol).unwrap().time_series();
     println!("Start simulating...");
-    let start_price = 100.0;
-    let next_price = simulation::simulation::henson(start_price);
-    let size = time_series.lock().unwrap().data().len();
-    time_series.lock().unwrap().data().insert(size, 
-        Point::new(start_price, next_price, next_price, next_price, 100));
+    let mut start_price = 100.0;
+    time_series.write().unwrap().update_time_range_unit(TimeRange::Minute);
+    for _ in 0..100 {
+        let next_price = simulation::simulation::henson(start_price);
+        let size = time_series.write().unwrap().data().len();
+        time_series.write().unwrap().data().insert(size, 
+            Point::new(start_price, next_price * 1.2, next_price * 0.8, next_price, 100));
+        start_price = next_price;
+    }
+    
     StatusCode::OK
 }
 
