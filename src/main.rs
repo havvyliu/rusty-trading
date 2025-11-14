@@ -1,7 +1,7 @@
 use axum::extract::{Query, State};
 use axum::routing::post;
 use axum::{http::StatusCode, routing::get, Json, Router};
-use chrono::{TimeDelta, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use external::IntradayStock;
 use rand::Rng;
 use reqwest::Client;
@@ -118,10 +118,18 @@ async fn make_transaction(
 
 async fn simulate_v2(
     State(order_book_arc): State<Arc<DashMap<String, OrderBook>>>,
-    symbol: String,
+    Query(params): Query<HashMap<String, String>>,
 ) -> StatusCode {
-    let time_series = order_book_arc.get_mut(&symbol).unwrap().time_series();
-    println!("Start simulating...");
+    let symbol = params.get("stock").unwrap();
+    let time_series = match order_book_arc.get_mut(symbol.as_str()) {
+        Some(entry) => entry.value().time_series(),
+        None => {
+            let order_b = OrderBook::default();
+            let ts_clone = order_b.time_series().clone();
+            order_book_arc.insert(symbol.clone(), order_b);
+            ts_clone
+        }
+    };
     let mut start_price = 100.0;
     time_series.write().unwrap().update_time_range_unit(TimeRange::Minute);
     for _ in 0..100 {
@@ -131,6 +139,7 @@ async fn simulate_v2(
             Point::new(start_price, next_price * 1.2, next_price * 0.8, next_price, 100));
         start_price = next_price;
     }
+    println!("Time series size is {}", time_series.write().unwrap().data().len());
     
     StatusCode::OK
 }
@@ -200,13 +209,13 @@ async fn get_daily(
     Query(params): Query<HashMap<String, String>>,
     State(order_book_map): State<Arc<DashMap<String, OrderBook>>>)
     -> (StatusCode, Json<TimeSeries>) {
-    println!("get_daily called..");
     let stock_name = params.get("stock").unwrap();
-    println!("size is {:?}", order_book_map.len());
+    println!("get_daily called.. for sotck {}", stock_name);
+    
     
     let time_series = match order_book_map.get(stock_name) {
         Some(order_book_ref) => {
-            order_book_ref.update_time_series();
+            // order_book_ref.update_time_series();
             
             let time_series_arc = order_book_ref.time_series();
             let time_series_guard = time_series_arc.read().unwrap();
