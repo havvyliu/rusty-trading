@@ -1,6 +1,11 @@
 use rand::prelude::*;
 use statrs::distribution::{Normal};
 
+pub fn down_and_up(mut price: f64) -> f64 {
+    let mut rng = rand::thread_rng();
+    rng.sample(Normal::new(price, 10.).unwrap())
+}
+
 pub fn henson(mut price: f64) -> f64 {
     let mut v = 0.04;
     let mu = 0.10;

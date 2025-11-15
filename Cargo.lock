@@ -1228,6 +1228,7 @@ dependencies = [
  "axum",
  "chrono",
  "dashmap",
+ "log",
  "mio 0.8.11",
  "rand",
  "reqwest",

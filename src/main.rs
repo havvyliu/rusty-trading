@@ -130,10 +130,14 @@ async fn simulate_v2(
             ts_clone
         }
     };
-    let mut start_price = 100.0;
+    let mut start_price = 200.0;
     time_series.write().unwrap().update_time_range_unit(TimeRange::Minute);
+    if (time_series.write().unwrap().data().len() >= 1000) {
+        log::info!("Stop generating new points");
+        return StatusCode::OK;
+    }
     for _ in 0..100 {
-        let next_price = simulation::simulation::henson(start_price);
+        let next_price = simulation::simulation::down_and_up(start_price);
         let size = time_series.write().unwrap().data().len();
         time_series.write().unwrap().data().insert(size, 
             Point::new(start_price, next_price * 1.2, next_price * 0.8, next_price, 100));
