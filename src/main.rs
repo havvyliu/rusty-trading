@@ -17,6 +17,7 @@ use dashmap::DashMap;
 
 mod external;
 mod simulation;
+mod execution;
 
 #[main]
 async fn main() {
@@ -28,9 +29,8 @@ async fn main() {
     let time_series: Arc<Mutex<TimeSeries>> = Arc::new(Mutex::new(TimeSeries::default()));
 
     let app = Router::new()
-        .route("/daily", get(get_daily))
+        .route("/stock", get(get_stock))
         .route("/transaction", post(make_transaction))
-        .route("/simulate", post(simulate))
         .route("/simulate_v2", post(simulate_v2))
         .layer(CorsLayer::permissive())
         .with_state(order_book_map)
@@ -43,23 +43,6 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn flush(order_book_map: Arc<DashMap<String, OrderBook>>) {
-    let map = order_book_map.clone();
-    for ref_multi in map.iter() {
-        let order_book = ref_multi.value();
-        let points_lock = order_book.points();
-        let mut points_queue = points_lock.write().unwrap();
-        let cur_point = order_book.cur_point();
-        let cur_pt: Point = cur_point.lock().unwrap().to_owned();
-        let mut cur_pt_lock = cur_point.lock().unwrap();
-        let close_val = cur_pt.clone().close;
-        *cur_pt_lock = Point::new(close_val, close_val, close_val, close_val, 0);
-        println!("writing point {:?} to queue", cur_pt);
-        points_queue.push_back(cur_pt);
-        println!("queue size is {:?}", points_queue.len());
-    }
-
-}
 
 async fn schedule_cron_job(order_book_map: Arc<DashMap<String, OrderBook>>) {
     // add scheduler
@@ -68,22 +51,13 @@ async fn schedule_cron_job(order_book_map: Arc<DashMap<String, OrderBook>>) {
     let job = Job::new_async("1/60 * * * * *", move |_uuid, _l| {
         let map_arc_clone = order_book_map.clone();
         Box::pin(
-            flush(map_arc_clone)
+            execution::flush(map_arc_clone)
         )
     });
     let _ = scheduler.add(job.unwrap()).await;
     // spawn another thread to process background tasks
     tokio::spawn(async move { scheduler.start().await });
 }
-
-//todo: Onboard DB
-//todo: Implement fn to flush transactions to time series data?
-//todo: Implement fn to flush changes caused by transactions to db?
-//todo: Implement a trading engine? Execute orders from buy and sell side
-//todo(ui): {
-// 1. UI, display a stock graph
-// 2. Dynamically update the graph (without user refresh)
-// }
 
 async fn make_transaction(
     State(order_book_map): State<Arc<DashMap<String, OrderBook>>>,
@@ -137,7 +111,7 @@ async fn simulate_v2(
         return StatusCode::OK;
     }
     for _ in 0..100 {
-        let next_price = simulation::simulation::down_and_up(start_price);
+        let next_price = simulation::algo::down_and_up(start_price);
         let size = time_series.write().unwrap().data().len();
         time_series.write().unwrap().data().insert(size, 
             Point::new(start_price, next_price * 1.2, next_price * 0.8, next_price, 100));
@@ -145,37 +119,6 @@ async fn simulate_v2(
     }
     println!("Time series size is {}", time_series.write().unwrap().data().len());
     
-    StatusCode::OK
-}
-
-async fn simulate(
-    State(order_book_arc): State<Arc<DashMap<String, OrderBook>>>,
-    symbol: String,
-) -> StatusCode {
-    println!("Start simulating..");
-    let order_book = match order_book_arc.get(&symbol) {
-        Some(value) => value,
-        None => {
-            let buy_order = Arc::new(Mutex::new(BinaryHeap::new()));
-            let sell_order = Arc::new(Mutex::new(BinaryHeap::new()));
-            let points_queue = Arc::new(RwLock::new(LinkedList::new()));
-            let start_point = Arc::new(Mutex::new(Point::blank()));
-            let new_order_book = OrderBook::new(buy_order, sell_order, points_queue, start_point);
-            order_book_arc.insert(symbol.clone(), new_order_book.to_owned());
-            order_book_arc.get(&symbol).unwrap()
-        }
-    };
-    for _i in 1..10 {
-        let price = rand::thread_rng().gen_range(50..=100) as f64;
-        let amount = rand::thread_rng().gen_range(100..=500);
-        //add buy orders.
-        let buy_order = Transaction::buy(symbol.clone(), price, amount);
-        order_book.add_buy_order(buy_order);
-        //add sell orders.
-        let sell_order = Transaction::sell(symbol.clone(), price, amount);
-        order_book.add_sell_order(sell_order);
-    };
-    order_book.execute();
     StatusCode::OK
 }
 
@@ -209,12 +152,12 @@ async fn get_real_data(State(client): State<Client>) -> (StatusCode, Json<TimeSe
     ))
 }
 
-async fn get_daily(
+async fn get_stock(
     Query(params): Query<HashMap<String, String>>,
     State(order_book_map): State<Arc<DashMap<String, OrderBook>>>)
     -> (StatusCode, Json<TimeSeries>) {
     let stock_name = params.get("stock").unwrap();
-    println!("get_daily called.. for sotck {}", stock_name);
+    println!("GET stock called.. for {}", stock_name);
     
     
     let time_series = match order_book_map.get(stock_name) {
@@ -263,7 +206,7 @@ async fn test_flush_working() {
             assert_eq!(order_book.cur_point().lock().unwrap().close, price);
         }
         //drop(map);
-        flush(order_book_arc.clone()).await;
+        execution::flush(order_book_arc.clone()).await;
         println!("Here");
         {
             let clone = order_book_arc.clone();
