@@ -181,6 +181,6 @@ pub fn test_str_gets_deserialized_properly() {
     let str = "2024-05-28 19:45:00";
     let dt = NaiveDateTime::parse_from_str(&str, FORMAT).unwrap();
     let utc = DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc);
-    assert_eq!(intraday_stock.time_series.map.get(&utc).unwrap().open, 1148.99 as f32);
+    assert_eq!(intraday_stock.time_series.map.get(&utc).unwrap().open, 1148.99 as f64);
     assert_eq!(intraday_stock.time_series.map.get(&utc).unwrap().volume, 15594 as u32);
 }

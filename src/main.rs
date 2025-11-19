@@ -110,11 +110,14 @@ async fn simulate_v2(
         log::info!("Stop generating new points");
         return StatusCode::OK;
     }
+    let mut timestamp = Utc::now();
     for _ in 0..100 {
         let next_price = simulation::algo::down_and_up(start_price);
         let size = time_series.write().unwrap().data().len();
+        timestamp = timestamp.checked_add_signed(TimeDelta::days(1)).unwrap();
         time_series.write().unwrap().data().insert(size, 
-            Point::new(start_price, next_price * 1.2, next_price * 0.8, next_price, 100));
+            Point::new_with_timestamp(start_price, next_price * 1.1, next_price * 0.9, next_price, 100, 
+                timestamp.clone()));
         start_price = next_price;
     }
     println!("Time series size is {}", time_series.write().unwrap().data().len());
@@ -138,7 +141,6 @@ async fn get_real_data(State(client): State<Client>) -> (StatusCode, Json<TimeSe
                 return (StatusCode::BAD_REQUEST, Json(TimeSeries::default()));
             }
         };
-    // TODO: parse the response to our model
     let body = reqwest_response.text().await.unwrap();
     let intraday: IntradayStock = serde_json::from_str(&body).unwrap();
     let map = intraday.get_points_map().to_owned();
