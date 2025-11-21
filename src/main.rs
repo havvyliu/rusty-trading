@@ -106,7 +106,7 @@ async fn simulate_v2(
     };
     let mut start_price = 200.0;
     time_series.write().unwrap().update_time_range_unit(TimeRange::Minute);
-    if (time_series.write().unwrap().data().len() >= 1000) {
+    if time_series.write().unwrap().data().len() >= 100 {
         log::info!("Stop generating new points");
         return StatusCode::OK;
     }
