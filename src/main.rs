@@ -24,14 +24,14 @@ async fn main() {
     let order_book_map: Arc<DashMap<String, OrderBook>> = Arc::new(DashMap::new());
 
     schedule_cron_job(order_book_map.clone()).await;
+    schedule_simulation(order_book_map.clone()).await;
 
     let client = reqwest::Client::new();
-    let time_series: Arc<Mutex<TimeSeries>> = Arc::new(Mutex::new(TimeSeries::default()));
 
     let app = Router::new()
         .route("/stock", get(get_stock))
         .route("/transaction", post(make_transaction))
-        .route("/simulate_v2", post(simulate_v2))
+        .route("/simulation_start", post(start_simulation))
         .layer(CorsLayer::permissive())
         .with_state(order_book_map)
         .route("/third_party", get(get_real_data))
@@ -43,6 +43,20 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
+async fn schedule_simulation(order_book_map: Arc<DashMap<String, OrderBook>>) {
+    // add scheduler
+    let scheduler = JobScheduler::new().await.unwrap();
+
+    let job = Job::new_async("* * * * * *", move |_uuid, _l| {
+        let map_arc_clone = order_book_map.clone();
+        Box::pin(
+            simulate_v2(map_arc_clone)
+        )
+    });
+    let _ = scheduler.add(job.unwrap()).await;
+    // spawn another thread to process background tasks
+    tokio::spawn(async move { scheduler.start().await });
+}
 
 async fn schedule_cron_job(order_book_map: Arc<DashMap<String, OrderBook>>) {
     // add scheduler
@@ -91,38 +105,42 @@ async fn make_transaction(
 }
 
 async fn simulate_v2(
+    order_book_arc: Arc<DashMap<String, OrderBook>>) {
+    for mut entry in order_book_arc.iter_mut() {
+        let symbol = entry.key();
+        let time_series = entry.value_mut().time_series();
+
+        let mut start_price = 200.0;
+        time_series.write().unwrap().update_time_range_unit(TimeRange::Minute);
+        let mut timestamp = Utc::now();
+        for _ in 0..5 {
+            let next_price = simulation::algo::down_and_up(start_price);
+            let size = time_series.write().unwrap().data().len();
+            timestamp = timestamp.checked_add_signed(TimeDelta::days(1)).unwrap();
+            time_series.write().unwrap().data().insert(size, 
+                Point::new_with_timestamp(start_price, next_price * 1.1, next_price * 0.9, next_price, 100, 
+                    timestamp.clone()));
+            start_price = next_price;
+        }
+        println!("Time series size is {}", time_series.write().unwrap().data().len());
+    }
+}
+
+async fn start_simulation(
     State(order_book_arc): State<Arc<DashMap<String, OrderBook>>>,
     Query(params): Query<HashMap<String, String>>,
 ) -> StatusCode {
     let symbol = params.get("stock").unwrap();
-    let time_series = match order_book_arc.get_mut(symbol.as_str()) {
-        Some(entry) => entry.value().time_series(),
+    match order_book_arc.get_mut(symbol.as_str()) {
+        Some(entry) => {},
         None => {
             let order_b = OrderBook::default();
             let ts_clone = order_b.time_series().clone();
             order_book_arc.insert(symbol.clone(), order_b);
-            ts_clone
         }
     };
-    let mut start_price = 200.0;
-    time_series.write().unwrap().update_time_range_unit(TimeRange::Minute);
-    if time_series.write().unwrap().data().len() >= 100 {
-        log::info!("Stop generating new points");
-        return StatusCode::OK;
-    }
-    let mut timestamp = Utc::now();
-    for _ in 0..100 {
-        let next_price = simulation::algo::down_and_up(start_price);
-        let size = time_series.write().unwrap().data().len();
-        timestamp = timestamp.checked_add_signed(TimeDelta::days(1)).unwrap();
-        time_series.write().unwrap().data().insert(size, 
-            Point::new_with_timestamp(start_price, next_price * 1.1, next_price * 0.9, next_price, 100, 
-                timestamp.clone()));
-        start_price = next_price;
-    }
-    println!("Time series size is {}", time_series.write().unwrap().data().len());
-    
     StatusCode::OK
+
 }
 
 
