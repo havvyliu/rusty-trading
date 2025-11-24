@@ -110,17 +110,20 @@ async fn simulate_v2(
         let symbol = entry.key();
         let time_series = entry.value_mut().time_series();
 
-        let mut start_price = 200.0;
-        time_series.write().unwrap().update_time_range_unit(TimeRange::Minute);
-        let mut timestamp = Utc::now();
+
         for _ in 0..5 {
+            let mut ts = time_series.write().unwrap();
+            let size = ts.data().len();
+
+            let mut start_price = if size == 0 { 200.0 } else { ts.data().last().unwrap().close };
             let next_price = simulation::algo::down_and_up(start_price);
-            let size = time_series.write().unwrap().data().len();
+            
+            let mut timestamp = if size > 0 { ts.end().clone() } else { Utc::now() };
             timestamp = timestamp.checked_add_signed(TimeDelta::days(1)).unwrap();
-            time_series.write().unwrap().data().insert(size, 
+            ts.set_end(timestamp);
+            ts.data().insert(size, 
                 Point::new_with_timestamp(start_price, next_price * 1.1, next_price * 0.9, next_price, 100, 
                     timestamp.clone()));
-            start_price = next_price;
         }
         println!("Time series size is {}", time_series.write().unwrap().data().len());
     }
