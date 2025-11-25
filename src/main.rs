@@ -3,12 +3,10 @@ use axum::routing::post;
 use axum::{http::StatusCode, routing::get, Json, Router};
 use chrono::{DateTime, TimeDelta, Utc};
 use external::IntradayStock;
-use rand::Rng;
 use reqwest::Client;
 use tower_http::cors::CorsLayer;
 use std::collections::{BinaryHeap, HashMap, LinkedList};
 use std::env;
-use std::ops::Add;
 use std::sync::{Arc, Mutex, RwLock};
 use tokio::main;
 use tokio_cron_scheduler::{Job, JobScheduler};
@@ -25,6 +23,8 @@ async fn main() {
 
     schedule_cron_job(order_book_map.clone()).await;
     schedule_simulation(order_book_map.clone()).await;
+
+    env_logger::init();
 
     let client = reqwest::Client::new();
 
@@ -125,7 +125,7 @@ async fn simulate_v2(
                 Point::new_with_timestamp(start_price, next_price * 1.1, next_price * 0.9, next_price, 100, 
                     timestamp.clone()));
         }
-        println!("Time series size is {}", time_series.write().unwrap().data().len());
+        log::info!("Time series size is {}", time_series.write().unwrap().data().len());
     }
 }
 
